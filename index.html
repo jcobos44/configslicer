@@ -1,471 +1,466 @@
-import React, { useState } from 'react';
-import { Layers, Grid, Thermometer, Gauge, ArrowUpDown, Maximize, Scissors, Box } from 'lucide-react';
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Parámetros Slicer FDM</title>
+    
+    <!-- Importamos Tailwind CSS para los estilos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Importamos React para la interactividad -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Importamos Babel para que el navegador entienda el código JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body>
+    <!-- Aquí es donde se dibujará nuestra aplicación -->
+    <div id="root"></div>
 
-const parameters = [
-  {
-    id: 'layerHeight',
-    title: 'Altura de Capa',
-    icon: Layers,
-    description: 'Determina la resolución vertical de la pieza. Valores más bajos dan mayor calidad superficial pero aumentan drásticamente el tiempo de impresión.',
-    tip: 'Para prototipos rápidos usa 0.28mm. Para miniaturas o figuras detalladas usa 0.12mm.',
-    min: 0.12,
-    max: 0.32,
-    step: 0.04,
-    defaultVal: 0.20,
-    unit: 'mm',
-    renderVisual: (val) => {
-      // Simulador de escalones (capas)
-      const numLayers = Math.floor(4 / val);
-      const layers = Array.from({ length: numLayers });
-      return (
-        <div className="flex flex-col-reverse items-center justify-end h-48 w-full border-b-2 border-slate-300 pb-2">
-          {layers.map((_, i) => {
-            const width = 100 - (i * (val * 10)); // Hace una forma de pirámide
-            if (width < 0) return null;
-            return (
-              <div 
-                key={i} 
-                className="bg-blue-600 border border-blue-800 rounded-sm transition-all duration-300"
-                style={{ height: `${val * 20}px`, width: `${width}%`, marginBottom: '1px' }}
-              />
-            );
-          })}
-        </div>
-      );
-    }
-  },
-  {
-    id: 'infill',
-    title: 'Densidad de Relleno',
-    icon: Grid,
-    description: 'Es la cantidad de material plástico impreso en el interior de la pieza. Una pieza no suele ser 100% sólida para ahorrar material y tiempo.',
-    tip: 'El 15% o 20% suele ser más que suficiente para piezas decorativas. Para piezas mecánicas, un 40% a 60% es ideal.',
-    min: 0,
-    max: 100,
-    step: 5,
-    defaultVal: 20,
-    unit: '%',
-    renderVisual: (val) => {
-      // Simulador de rejilla de relleno
-      const gridSize = val === 0 ? 1000 : Math.max(5, 50 - (val / 2.5));
-      return (
-        <div className="flex items-center justify-center h-48 w-full">
-          <div className="w-40 h-40 border-4 border-blue-700 relative overflow-hidden bg-white rounded-md shadow-inner">
-            {val > 0 && (
-              <div 
-                className="absolute inset-0 opacity-70 transition-all duration-300"
-                style={{
-                  backgroundImage: `linear-gradient(45deg, #2563eb 25%, transparent 25%, transparent 75%, #2563eb 75%, #2563eb), linear-gradient(45deg, #2563eb 25%, transparent 25%, transparent 75%, #2563eb 75%, #2563eb)`,
-                  backgroundSize: `${gridSize}px ${gridSize}px`,
-                  backgroundPosition: `0 0, ${gridSize/2}px ${gridSize/2}px`
-                }}
-              />
-            )}
-          </div>
-        </div>
-      );
-    }
-  },
-  {
-    id: 'temperature',
-    title: 'Temperatura',
-    icon: Thermometer,
-    description: 'La temperatura del fusor (nozzle) y la cama caliente (bed). Depende completamente del tipo de material que estés usando (PLA, PETG, ABS, TPU).',
-    tip: 'Si escuchas "clacks" en el extrusor, podrías necesitar más temperatura. Si la pieza tiene muchos "hilos", podrías necesitar bajarla.',
-    min: 190,
-    max: 260,
-    step: 5,
-    defaultVal: 200,
-    unit: '°C',
-    renderVisual: (val) => {
-      // Simulador de temperatura (color)
-      let material = "Desconocido";
-      let status = "bg-blue-500";
-      let statusText = "text-blue-700";
-      
-      if (val >= 190 && val <= 220) { material = "Rango PLA"; status = "bg-green-500"; statusText = "text-green-700"; }
-      else if (val > 220 && val <= 250) { material = "Rango PETG / ABS"; status = "bg-orange-500"; statusText = "text-orange-700"; }
-      else if (val > 250) { material = "Materiales Avanzados (Nylon, PC)"; status = "bg-red-600"; statusText = "text-red-700"; }
-      else { material = "Muy frío para extruir"; status = "bg-sky-300"; statusText = "text-sky-700"; }
+    <!-- Script de nuestra aplicación -->
+    <script type="text/babel">
+        const { useState } = React;
 
-      const heightPercentage = ((val - 180) / (260 - 180)) * 100;
+        // --- Íconos integrados (SVG) ---
+        const IconLayers = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 12 12 17 22 12"/><polyline points="2 17 12 22 22 17"/></svg>;
+        const IconGrid = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>;
+        const IconThermometer = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/></svg>;
+        const IconGauge = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg>;
+        const IconArrowUpDown = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/></svg>;
+        const IconMaximize = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>;
+        const IconScissors = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>;
+        const IconBox = ({size=24}) => <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>;
 
-      return (
-        <div className="flex flex-col items-center justify-center h-48 w-full gap-4">
-          <div className="relative h-32 w-10 bg-slate-200 rounded-full border-2 border-slate-400 overflow-hidden">
-            <div 
-              className={`absolute bottom-0 w-full rounded-full transition-all duration-500 ${status}`}
-              style={{ height: `${heightPercentage}%` }}
-            />
-          </div>
-          <p className={`font-bold text-lg ${statusText}`}>{material}</p>
-        </div>
-      );
-    }
-  },
-  {
-    id: 'speed',
-    title: 'Velocidad de Impresión',
-    icon: Gauge,
-    description: 'Determina qué tan rápido se mueve el cabezal de impresión. A mayor velocidad, menor tiempo, pero puede generar vibraciones (ghosting) y menor calidad.',
-    tip: 'Las paredes exteriores siempre se imprimen más lento (ej. 50% de la velocidad principal) para asegurar un buen acabado visual.',
-    min: 20,
-    max: 150,
-    step: 10,
-    defaultVal: 50,
-    unit: 'mm/s',
-    renderVisual: (val) => {
-      // Simulador de velocidad (animación CSS)
-      const duration = Math.max(0.5, 4 - (val / 40)); 
-      
-      return (
-        <div className="flex flex-col items-center justify-center h-48 w-full">
-          <div className="w-full max-w-md h-2 bg-slate-200 rounded relative">
-            <div 
-              className="absolute top-1/2 -translate-y-1/2 w-8 h-10 bg-blue-700 rounded shadow-lg flex items-center justify-center"
-              style={{ 
-                animation: `slide ${duration}s ease-in-out infinite alternate`
-              }}
-            >
-               <div className="w-1 h-3 bg-white/50 rounded-full"/>
-            </div>
-            {/* Styles for the animation */}
-            <style>
-              {`
-                @keyframes slide {
-                  0% { left: 0%; transform: translateY(-50%) rotate(-5deg); }
-                  100% { left: calc(100% - 2rem); transform: translateY(-50%) rotate(5deg); }
-                }
-              `}
-            </style>
-          </div>
-          <p className="mt-8 text-slate-500 italic text-sm">El cabezal se mueve más rápido</p>
-        </div>
-      );
-    }
-  },
-  {
-    id: 'retraction',
-    title: 'Retracción',
-    icon: ArrowUpDown,
-    description: 'El motor del extrusor tira ligeramente del filamento hacia atrás cuando el cabezal se desplaza por el aire sin imprimir. Evita goteos y "telarañas" (stringing).',
-    tip: 'Las impresoras Bowden (tubo largo) necesitan retracciones de 4mm a 7mm. Las impresoras Directas solo necesitan de 0.5mm a 1.5mm.',
-    min: 0,
-    max: 8,
-    step: 0.5,
-    defaultVal: 1.5,
-    unit: 'mm',
-    renderVisual: (val) => {
-      // Simulación de stringing
-      const stringingLevel = val < 1.5 ? 5 : val < 4 ? 2 : 0;
-      
-      return (
-        <div className="flex justify-center items-end h-48 w-full pb-4 space-x-12 relative">
-          <div className="w-8 h-24 bg-blue-600 rounded-t-sm" />
-          <div className="w-8 h-24 bg-blue-600 rounded-t-sm" />
-          
-          {/* Cuerdas (Stringing) */}
-          {Array.from({ length: stringingLevel }).map((_, i) => (
-             <svg key={i} className="absolute inset-0 w-full h-full pointer-events-none">
-                <path 
-                  d={`M ${150 + i*5} 120 Q 200 ${90 + i*15} ${240 - i*5} 120`} 
-                  stroke="#94a3b8" 
-                  strokeWidth="0.5" 
-                  fill="transparent" 
-                />
-             </svg>
-          ))}
-          {stringingLevel === 0 && (
-            <div className="absolute top-1/2 text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full border border-green-200">
-              Desplazamiento limpio
-            </div>
-          )}
-           {stringingLevel > 0 && (
-            <div className="absolute top-10 text-red-500 font-medium text-sm">
-              Formación de hilos (Stringing)
-            </div>
-          )}
-        </div>
-      );
-    }
-  },
-  {
-    id: 'supports',
-    title: 'Soportes',
-    icon: Maximize,
-    description: 'Estructuras de sacrificio que la impresora crea para sostener partes de la pieza que quedan "flotando" en el aire (voladizos mayores a 45 grados).',
-    tip: 'Utiliza el modo "Soportes en forma de Árbol" (Tree Supports) para ahorrar material y facilitar la extracción.',
-    min: 0,
-    max: 1,
-    step: 1,
-    defaultVal: 1,
-    unit: '',
-    renderVisual: (val) => {
-      const showSupports = val === 1;
-      return (
-        <div className="flex flex-col items-center justify-end h-48 w-full border-b-2 border-slate-300 pb-2">
-           <div className="relative w-40 h-24 flex">
-             {/* Pilar principal */}
-             <div className="w-12 h-24 bg-blue-700" />
-             {/* Voladizo (Overhang) */}
-             <div className="w-28 h-8 bg-blue-700 absolute right-0 top-0" />
-             
-             {/* Soportes */}
-             {showSupports ? (
-                <div className="absolute right-0 bottom-0 w-28 h-16 flex justify-around items-end opacity-60">
-                   <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
-                   <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
-                   <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
+        // --- Datos de los parámetros ---
+        const parameters = [
+          {
+            id: 'layerHeight',
+            title: 'Altura de Capa',
+            icon: IconLayers,
+            description: 'Determina la resolución vertical de la pieza. Valores más bajos dan mayor calidad superficial pero aumentan drásticamente el tiempo de impresión.',
+            tip: 'Para prototipos rápidos usa 0.28mm. Para miniaturas o figuras detalladas usa 0.12mm.',
+            min: 0.12,
+            max: 0.32,
+            step: 0.04,
+            defaultVal: 0.20,
+            unit: 'mm',
+            renderVisual: (val) => {
+              const numLayers = Math.floor(4 / val);
+              const layers = Array.from({ length: numLayers });
+              return (
+                <div className="flex flex-col-reverse items-center justify-end h-48 w-full border-b-2 border-slate-300 pb-2">
+                  {layers.map((_, i) => {
+                    const width = 100 - (i * (val * 10));
+                    if (width < 0) return null;
+                    return (
+                      <div 
+                        key={i} 
+                        className="bg-blue-600 border border-blue-800 rounded-sm transition-all duration-300"
+                        style={{ height: `${val * 20}px`, width: `${width}%`, marginBottom: '1px' }}
+                      />
+                    );
+                  })}
                 </div>
-             ) : (
-                <div className="absolute right-0 bottom-4 w-28 text-center text-red-500 font-bold text-sm animate-pulse">
-                  ¡Riesgo de colapso!
-                </div>
-             )}
-             <style>
-               {`
-                 .striped-bg {
-                   background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.5) 5px, rgba(255,255,255,0.5) 10px);
-                 }
-               `}
-             </style>
-           </div>
-        </div>
-      );
-    }
-  },
-  {
-    id: 'adhesion',
-    title: 'Adherencia a la Cama',
-    icon: Scissors,
-    description: 'Técnicas para asegurar que la primera capa se pegue bien y evitar el "Warping" (que las esquinas se levanten). Tipos: Skirt, Brim y Raft.',
-    tip: 'El "Skirt" solo sirve para purgar el nozzle. Usa "Brim" para piezas con base pequeña o esquinas propensas al warping.',
-    min: 0,
-    max: 2,
-    step: 1,
-    defaultVal: 1,
-    unit: '',
-    renderVisual: (val) => {
-      const types = ["Skirt (Falda)", "Brim (Borde)", "Raft (Balsa)"];
-      return (
-        <div className="flex flex-col items-center justify-center h-48 w-full gap-4">
-          <div className="relative w-48 h-32 flex items-center justify-center transform rotate-x-60 perspective-1000">
-             {/* Pieza */}
-             <div className="w-16 h-16 bg-blue-700 z-10 rounded-sm shadow-xl" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
-             
-             {/* Adherencia visual */}
-             {val === 0 && (
-               <div className="absolute w-24 h-24 border-2 border-slate-400 rounded-sm" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
-             )}
-             {val === 1 && (
-               <div className="absolute w-24 h-24 bg-blue-200/50 border-4 border-blue-400/50 rounded-sm" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
-             )}
-             {val === 2 && (
-               <div className="absolute w-28 h-28 bg-slate-300 border-2 border-slate-400 rounded-sm striped-bg" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
-             )}
-          </div>
-          <p className="font-semibold text-blue-700">{types[val]}</p>
-        </div>
-      );
-    }
-  }
-];
-
-export default function App() {
-  const [selectedId, setSelectedId] = useState(parameters[0].id);
-  const [values, setValues] = useState(
-    parameters.reduce((acc, param) => ({ ...acc, [param.id]: param.defaultVal }), {})
-  );
-
-  const activeParam = parameters.find(p => p.id === selectedId);
-  const activeValue = values[selectedId];
-
-  const handleSliderChange = (e) => {
-    setValues({ ...values, [selectedId]: parseFloat(e.target.value) });
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 pb-12">
-      
-      {/* Encabezado Hero / Primer Página */}
-      <header className="bg-white border-b border-slate-200 shadow-sm mb-10 overflow-hidden">
-        <div className="max-w-6xl mx-auto px-4 md:px-8 py-12 md:py-16 flex flex-col-reverse md:flex-row items-center justify-between gap-10">
-          
-          <div className="text-center md:text-left md:w-3/5 z-10">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm mb-6">
-              <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
-              Simulador Interactivo
-            </div>
-            <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 mb-4 leading-tight">
-              Parámetros del <br className="hidden md:block"/>
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-cyan-500">
-                Slicer FDM
-              </span>
-            </h1>
-            <p className="text-lg md:text-xl text-slate-600 max-w-xl mx-auto md:mx-0">
-              Descubre cómo las configuraciones de corte afectan la calidad, tiempo y resistencia de tus impresiones 3D.
-            </p>
-          </div>
-
-          <div className="md:w-2/5 flex justify-center relative">
-            {/* Fondo decorativo brillante */}
-            <div className="absolute inset-0 bg-blue-50 rounded-full blur-3xl opacity-70 transform scale-150"></div>
-            
-            {/* SVG Personalizado de Impresora 3D */}
-            <div className="relative z-10" style={{ animation: 'float 6s ease-in-out infinite' }}>
-              <svg width="240" height="240" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-2xl">
-                {/* Base */}
-                <rect x="20" y="160" width="160" height="20" rx="4" fill="#1e293b" />
-                <rect x="25" y="165" width="40" height="10" rx="2" fill="#334155" />
-                <rect x="135" y="165" width="40" height="10" rx="2" fill="#334155" />
-                <circle cx="100" cy="170" r="4" fill="#0ea5e9" />
-                
-                {/* Estructura Z */}
-                <path d="M30 40 Q 30 30 40 30 L 160 30 Q 170 30 170 40 L 170 160 L 155 160 L 155 45 L 45 45 L 45 160 L 30 160 Z" fill="#334155" />
-                <rect x="45" y="45" width="110" height="115" fill="#f8fafc" opacity="0.5" />
-                
-                {/* Eje X */}
-                <rect x="40" y="80" width="120" height="12" rx="2" fill="#94a3b8" />
-                <rect x="40" y="84" width="120" height="4" fill="#cbd5e1" />
-                
-                {/* Extrusor */}
-                <rect x="85" y="65" width="30" height="35" rx="4" fill="#2563eb" />
-                <rect x="90" y="70" width="20" height="25" rx="2" fill="#1d4ed8" />
-                <path d="M96 100 L104 100 L102 110 L98 110 Z" fill="#fbbf24" />
-                <path d="M99 110 L101 110 L101 145 L99 145 Z" fill="#38bdf8" opacity="0.6" />
-                
-                {/* Cama Caliente */}
-                <rect x="50" y="145" width="100" height="8" rx="2" fill="#cbd5e1" />
-                <rect x="55" y="145" width="90" height="2" fill="#e2e8f0" />
-                
-                {/* Pieza imprimiéndose */}
-                <path d="M70 145 L130 145 L115 115 L85 115 Z" fill="#0ea5e9" opacity="0.9" />
-                <path d="M75 145 L125 145 L100 85 Z" fill="#38bdf8" opacity="0.5" />
-                
-                {/* Rollo de Filamento */}
-                <rect x="85" y="5" width="30" height="25" rx="2" fill="#64748b" />
-                <circle cx="100" cy="17" r="20" fill="#2563eb" />
-                <circle cx="100" cy="17" r="6" fill="#f8fafc" />
-                <circle cx="100" cy="17" r="3" fill="#94a3b8" />
-                
-                {/* Hilo de filamento */}
-                <path d="M100 37 C 100 50, 90 55, 100 65" stroke="#38bdf8" strokeWidth="2" fill="none" strokeDasharray="4 2" />
-              </svg>
-            </div>
-            
-            {/* Iconos decorativos flotantes */}
-            <div className="absolute top-0 right-10 text-blue-300 opacity-50" style={{ animation: 'float 4s ease-in-out infinite reverse' }}>
-              <Layers size={32} />
-            </div>
-            <div className="absolute bottom-10 left-5 text-cyan-400 opacity-50" style={{ animation: 'float 5s ease-in-out infinite 1s' }}>
-              <Box size={24} />
-            </div>
-          </div>
-        </div>
-
-        <style>
-          {`
-            @keyframes float {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-15px); }
+              );
             }
-          `}
-        </style>
-      </header>
-
-      {/* Contenedor Principal */}
-      <main className="max-w-6xl mx-auto px-4 md:px-8 flex flex-col lg:flex-row gap-8">
-        
-        {/* Panel Izquierdo: Lista de parámetros */}
-        <aside className="lg:w-1/3 flex flex-col gap-2">
-          {parameters.map((param) => {
-            const isSelected = selectedId === param.id;
-            const Icon = param.icon;
-            return (
-              <button
-                key={param.id}
-                onClick={() => setSelectedId(param.id)}
-                className={`flex items-center gap-4 w-full text-left p-4 rounded-xl transition-all duration-200 border-2 
-                  ${isSelected 
-                    ? 'bg-blue-50 border-blue-600 shadow-md transform scale-[1.02]' 
-                    : 'bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-600'
-                  }`}
-              >
-                <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                  <Icon size={24} />
+          },
+          {
+            id: 'infill',
+            title: 'Densidad de Relleno',
+            icon: IconGrid,
+            description: 'Es la cantidad de material plástico impreso en el interior de la pieza. Una pieza no suele ser 100% sólida para ahorrar material y tiempo.',
+            tip: 'El 15% o 20% suele ser más que suficiente para piezas decorativas. Para piezas mecánicas, un 40% a 60% es ideal.',
+            min: 0,
+            max: 100,
+            step: 5,
+            defaultVal: 20,
+            unit: '%',
+            renderVisual: (val) => {
+              const gridSize = val === 0 ? 1000 : Math.max(5, 50 - (val / 2.5));
+              return (
+                <div className="flex items-center justify-center h-48 w-full">
+                  <div className="w-40 h-40 border-4 border-blue-700 relative overflow-hidden bg-white rounded-md shadow-inner">
+                    {val > 0 && (
+                      <div 
+                        className="absolute inset-0 opacity-70 transition-all duration-300"
+                        style={{
+                          backgroundImage: `linear-gradient(45deg, #2563eb 25%, transparent 25%, transparent 75%, #2563eb 75%, #2563eb), linear-gradient(45deg, #2563eb 25%, transparent 25%, transparent 75%, #2563eb 75%, #2563eb)`,
+                          backgroundSize: `${gridSize}px ${gridSize}px`,
+                          backgroundPosition: `0 0, ${gridSize/2}px ${gridSize/2}px`
+                        }}
+                      />
+                    )}
+                  </div>
                 </div>
-                <span className={`font-semibold text-lg ${isSelected ? 'text-blue-900' : ''}`}>
-                  {param.title}
-                </span>
-              </button>
-            );
-          })}
-        </aside>
+              );
+            }
+          },
+          {
+            id: 'temperature',
+            title: 'Temperatura',
+            icon: IconThermometer,
+            description: 'La temperatura del fusor (nozzle) y la cama caliente (bed). Depende completamente del tipo de material que estés usando (PLA, PETG, ABS, TPU).',
+            tip: 'Si escuchas "clacks" en el extrusor, podrías necesitar más temperatura. Si la pieza tiene muchos "hilos", podrías necesitar bajarla.',
+            min: 190,
+            max: 260,
+            step: 5,
+            defaultVal: 200,
+            unit: '°C',
+            renderVisual: (val) => {
+              let material = "Desconocido";
+              let status = "bg-blue-500";
+              let statusText = "text-blue-700";
+              
+              if (val >= 190 && val <= 220) { material = "Rango PLA"; status = "bg-green-500"; statusText = "text-green-700"; }
+              else if (val > 220 && val <= 250) { material = "Rango PETG / ABS"; status = "bg-orange-500"; statusText = "text-orange-700"; }
+              else if (val > 250) { material = "Materiales Avanzados (Nylon, PC)"; status = "bg-red-600"; statusText = "text-red-700"; }
+              else { material = "Muy frío para extruir"; status = "bg-sky-300"; statusText = "text-sky-700"; }
 
-        {/* Panel Derecho: Área Interactiva */}
-        <section className="lg:w-2/3 bg-white rounded-2xl p-6 md:p-10 border border-slate-200 shadow-sm flex flex-col">
-          
-          {/* Título de la sección */}
-          <div className="flex items-center gap-3 mb-6">
-             <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
-                <activeParam.icon size={32} />
-             </div>
-             <h2 className="text-3xl font-bold text-slate-900">{activeParam.title}</h2>
-          </div>
+              const heightPercentage = ((val - 180) / (260 - 180)) * 100;
 
-          {/* Descripción */}
-          <p className="text-lg text-slate-700 leading-relaxed mb-6">
-            {activeParam.description}
-          </p>
+              return (
+                <div className="flex flex-col items-center justify-center h-48 w-full gap-4">
+                  <div className="relative h-32 w-10 bg-slate-200 rounded-full border-2 border-slate-400 overflow-hidden">
+                    <div 
+                      className={`absolute bottom-0 w-full rounded-full transition-all duration-500 ${status}`}
+                      style={{ height: `${heightPercentage}%` }}
+                    />
+                  </div>
+                  <p className={`font-bold text-lg ${statusText}`}>{material}</p>
+                </div>
+              );
+            }
+          },
+          {
+            id: 'speed',
+            title: 'Velocidad de Impresión',
+            icon: IconGauge,
+            description: 'Determina qué tan rápido se mueve el cabezal de impresión. A mayor velocidad, menor tiempo, pero puede generar vibraciones (ghosting) y menor calidad.',
+            tip: 'Las paredes exteriores siempre se imprimen más lento (ej. 50% de la velocidad principal) para asegurar un buen acabado visual.',
+            min: 20,
+            max: 150,
+            step: 10,
+            defaultVal: 50,
+            unit: 'mm/s',
+            renderVisual: (val) => {
+              const duration = Math.max(0.5, 4 - (val / 40)); 
+              
+              return (
+                <div className="flex flex-col items-center justify-center h-48 w-full">
+                  <div className="w-full max-w-md h-2 bg-slate-200 rounded relative">
+                    <div 
+                      className="absolute top-1/2 -translate-y-1/2 w-8 h-10 bg-blue-700 rounded shadow-lg flex items-center justify-center"
+                      style={{ 
+                        animation: `slide ${duration}s ease-in-out infinite alternate`
+                      }}
+                    >
+                       <div className="w-1 h-3 bg-white/50 rounded-full"/>
+                    </div>
+                    <style dangerouslySetInnerHTML={{__html: `
+                      @keyframes slide {
+                        0% { left: 0%; transform: translateY(-50%) rotate(-5deg); }
+                        100% { left: calc(100% - 2rem); transform: translateY(-50%) rotate(5deg); }
+                      }
+                    `}} />
+                  </div>
+                  <p className="mt-8 text-slate-500 italic text-sm">El cabezal se mueve más rápido</p>
+                </div>
+              );
+            }
+          },
+          {
+            id: 'retraction',
+            title: 'Retracción',
+            icon: IconArrowUpDown,
+            description: 'El motor del extrusor tira ligeramente del filamento hacia atrás cuando el cabezal se desplaza por el aire sin imprimir. Evita goteos y "telarañas" (stringing).',
+            tip: 'Las impresoras Bowden (tubo largo) necesitan retracciones de 4mm a 7mm. Las impresoras Directas solo necesitan de 0.5mm a 1.5mm.',
+            min: 0,
+            max: 8,
+            step: 0.5,
+            defaultVal: 1.5,
+            unit: 'mm',
+            renderVisual: (val) => {
+              const stringingLevel = val < 1.5 ? 5 : val < 4 ? 2 : 0;
+              
+              return (
+                <div className="flex justify-center items-end h-48 w-full pb-4 space-x-12 relative">
+                  <div className="w-8 h-24 bg-blue-600 rounded-t-sm" />
+                  <div className="w-8 h-24 bg-blue-600 rounded-t-sm" />
+                  
+                  {Array.from({ length: stringingLevel }).map((_, i) => (
+                     <svg key={i} className="absolute inset-0 w-full h-full pointer-events-none">
+                        <path 
+                          d={`M ${150 + i*5} 120 Q 200 ${90 + i*15} ${240 - i*5} 120`} 
+                          stroke="#94a3b8" 
+                          strokeWidth="0.5" 
+                          fill="transparent" 
+                        />
+                     </svg>
+                  ))}
+                  {stringingLevel === 0 && (
+                    <div className="absolute top-1/2 text-green-600 font-semibold bg-green-50 px-3 py-1 rounded-full border border-green-200">
+                      Desplazamiento limpio
+                    </div>
+                  )}
+                   {stringingLevel > 0 && (
+                    <div className="absolute top-10 text-red-500 font-medium text-sm">
+                      Formación de hilos (Stringing)
+                    </div>
+                  )}
+                </div>
+              );
+            }
+          },
+          {
+            id: 'supports',
+            title: 'Soportes',
+            icon: IconMaximize,
+            description: 'Estructuras de sacrificio que la impresora crea para sostener partes de la pieza que quedan "flotando" en el aire (voladizos mayores a 45 grados).',
+            tip: 'Utiliza el modo "Soportes en forma de Árbol" (Tree Supports) para ahorrar material y facilitar la extracción.',
+            min: 0,
+            max: 1,
+            step: 1,
+            defaultVal: 1,
+            unit: '',
+            renderVisual: (val) => {
+              const showSupports = val === 1;
+              return (
+                <div className="flex flex-col items-center justify-end h-48 w-full border-b-2 border-slate-300 pb-2">
+                   <div className="relative w-40 h-24 flex">
+                     <div className="w-12 h-24 bg-blue-700" />
+                     <div className="w-28 h-8 bg-blue-700 absolute right-0 top-0" />
+                     
+                     {showSupports ? (
+                        <div className="absolute right-0 bottom-0 w-28 h-16 flex justify-around items-end opacity-60">
+                           <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
+                           <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
+                           <div className="w-2 h-16 bg-slate-400 border-x border-slate-500/50 striped-bg" />
+                        </div>
+                     ) : (
+                        <div className="absolute right-0 bottom-4 w-28 text-center text-red-500 font-bold text-sm animate-pulse">
+                          ¡Riesgo de colapso!
+                        </div>
+                     )}
+                     <style dangerouslySetInnerHTML={{__html: `
+                       .striped-bg {
+                         background-image: repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,0.5) 5px, rgba(255,255,255,0.5) 10px);
+                       }
+                     `}} />
+                   </div>
+                </div>
+              );
+            }
+          },
+          {
+            id: 'adhesion',
+            title: 'Adherencia a la Cama',
+            icon: IconScissors,
+            description: 'Técnicas para asegurar que la primera capa se pegue bien y evitar el "Warping" (que las esquinas se levanten). Tipos: Skirt, Brim y Raft.',
+            tip: 'El "Skirt" solo sirve para purgar el nozzle. Usa "Brim" para piezas con base pequeña o esquinas propensas al warping.',
+            min: 0,
+            max: 2,
+            step: 1,
+            defaultVal: 1,
+            unit: '',
+            renderVisual: (val) => {
+              const types = ["Skirt (Falda)", "Brim (Borde)", "Raft (Balsa)"];
+              return (
+                <div className="flex flex-col items-center justify-center h-48 w-full gap-4">
+                  <div className="relative w-48 h-32 flex items-center justify-center transform rotate-x-60 perspective-1000">
+                     <div className="w-16 h-16 bg-blue-700 z-10 rounded-sm shadow-xl" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
+                     
+                     {val === 0 && (
+                       <div className="absolute w-24 h-24 border-2 border-slate-400 rounded-sm" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
+                     )}
+                     {val === 1 && (
+                       <div className="absolute w-24 h-24 bg-blue-200/50 border-4 border-blue-400/50 rounded-sm" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
+                     )}
+                     {val === 2 && (
+                       <div className="absolute w-28 h-28 bg-slate-300 border-2 border-slate-400 rounded-sm striped-bg" style={{ transform: 'rotateX(45deg) rotateZ(45deg)' }} />
+                     )}
+                  </div>
+                  <p className="font-semibold text-blue-700">{types[val]}</p>
+                </div>
+              );
+            }
+          }
+        ];
 
-          {/* Consejo */}
-          <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-10 text-slate-800">
-            <strong>💡 Consejo Pro:</strong> {activeParam.tip}
-          </div>
+        // --- Componente Principal App ---
+        function App() {
+          const [selectedId, setSelectedId] = useState(parameters[0].id);
+          const [values, setValues] = useState(
+            parameters.reduce((acc, param) => ({ ...acc, [param.id]: param.defaultVal }), {})
+          );
 
-          {/* Simulador Interactivo */}
-          <div className="mt-auto bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
-            <h3 className="text-sm font-bold tracking-wider text-slate-400 uppercase mb-6 text-center">
-              Simulador Visual
-            </h3>
-            
-            {/* Visualización generada */}
-            {activeParam.renderVisual(activeValue)}
+          const activeParam = parameters.find(p => p.id === selectedId);
+          const activeValue = values[selectedId];
 
-            {/* Controles deslizantes */}
-            <div className="mt-8 px-4">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-slate-500 font-medium text-sm">Ajustar valor:</span>
-                <span className="text-2xl font-bold text-blue-700 bg-blue-50 px-4 py-1 rounded-lg">
-                  {activeParam.id === 'supports' 
-                    ? (activeValue === 1 ? 'Sí' : 'No') 
-                    : activeParam.id === 'adhesion'
-                      ? (['Skirt', 'Brim', 'Raft'][activeValue])
-                      : `${activeValue} ${activeParam.unit}`
+          const handleSliderChange = (e) => {
+            setValues({ ...values, [selectedId]: parseFloat(e.target.value) });
+          };
+
+          return (
+            <div className="min-h-screen bg-slate-50 text-slate-800 font-sans selection:bg-blue-100 pb-12">
+              
+              <header className="bg-white border-b border-slate-200 shadow-sm mb-10 overflow-hidden">
+                <div className="max-w-6xl mx-auto px-4 md:px-8 py-12 md:py-16 flex flex-col-reverse md:flex-row items-center justify-between gap-10">
+                  
+                  <div className="text-center md:text-left md:w-3/5 z-10">
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-100 text-blue-700 font-semibold text-sm mb-6">
+                      <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span>
+                      Simulador Interactivo
+                    </div>
+                    <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-900 mb-4 leading-tight">
+                      Parámetros del <br className="hidden md:block"/>
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-700 to-cyan-500">
+                        Slicer FDM
+                      </span>
+                    </h1>
+                    <p className="text-lg md:text-xl text-slate-600 max-w-xl mx-auto md:mx-0">
+                      Descubre cómo las configuraciones de corte afectan la calidad, tiempo y resistencia de tus impresiones 3D.
+                    </p>
+                  </div>
+
+                  <div className="md:w-2/5 flex justify-center relative">
+                    <div className="absolute inset-0 bg-blue-50 rounded-full blur-3xl opacity-70 transform scale-150"></div>
+                    
+                    <div className="relative z-10" style={{ animation: 'float 6s ease-in-out infinite' }}>
+                      <svg width="240" height="240" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg" className="drop-shadow-2xl">
+                        <rect x="20" y="160" width="160" height="20" rx="4" fill="#1e293b" />
+                        <rect x="25" y="165" width="40" height="10" rx="2" fill="#334155" />
+                        <rect x="135" y="165" width="40" height="10" rx="2" fill="#334155" />
+                        <circle cx="100" cy="170" r="4" fill="#0ea5e9" />
+                        <path d="M30 40 Q 30 30 40 30 L 160 30 Q 170 30 170 40 L 170 160 L 155 160 L 155 45 L 45 45 L 45 160 L 30 160 Z" fill="#334155" />
+                        <rect x="45" y="45" width="110" height="115" fill="#f8fafc" opacity="0.5" />
+                        <rect x="40" y="80" width="120" height="12" rx="2" fill="#94a3b8" />
+                        <rect x="40" y="84" width="120" height="4" fill="#cbd5e1" />
+                        <rect x="85" y="65" width="30" height="35" rx="4" fill="#2563eb" />
+                        <rect x="90" y="70" width="20" height="25" rx="2" fill="#1d4ed8" />
+                        <path d="M96 100 L104 100 L102 110 L98 110 Z" fill="#fbbf24" />
+                        <path d="M99 110 L101 110 L101 145 L99 145 Z" fill="#38bdf8" opacity="0.6" />
+                        <rect x="50" y="145" width="100" height="8" rx="2" fill="#cbd5e1" />
+                        <rect x="55" y="145" width="90" height="2" fill="#e2e8f0" />
+                        <path d="M70 145 L130 145 L115 115 L85 115 Z" fill="#0ea5e9" opacity="0.9" />
+                        <path d="M75 145 L125 145 L100 85 Z" fill="#38bdf8" opacity="0.5" />
+                        <rect x="85" y="5" width="30" height="25" rx="2" fill="#64748b" />
+                        <circle cx="100" cy="17" r="20" fill="#2563eb" />
+                        <circle cx="100" cy="17" r="6" fill="#f8fafc" />
+                        <circle cx="100" cy="17" r="3" fill="#94a3b8" />
+                        <path d="M100 37 C 100 50, 90 55, 100 65" stroke="#38bdf8" strokeWidth="2" fill="none" strokeDasharray="4 2" />
+                      </svg>
+                    </div>
+                    
+                    <div className="absolute top-0 right-10 text-blue-300 opacity-50" style={{ animation: 'float 4s ease-in-out infinite reverse' }}>
+                      <IconLayers size={32} />
+                    </div>
+                    <div className="absolute bottom-10 left-5 text-cyan-400 opacity-50" style={{ animation: 'float 5s ease-in-out infinite 1s' }}>
+                      <IconBox size={24} />
+                    </div>
+                  </div>
+                </div>
+
+                <style dangerouslySetInnerHTML={{__html: `
+                  @keyframes float {
+                    0%, 100% { transform: translateY(0); }
+                    50% { transform: translateY(-15px); }
                   }
-                </span>
-              </div>
-              
-              <input
-                type="range"
-                min={activeParam.min}
-                max={activeParam.max}
-                step={activeParam.step}
-                value={activeValue}
-                onChange={handleSliderChange}
-                className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-              />
-              
-              <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
-                <span>{activeParam.id === 'supports' ? 'Sin Soporte' : activeParam.id === 'adhesion' ? 'Mínimo' : activeParam.min}</span>
-                <span>{activeParam.id === 'supports' ? 'Con Soporte' : activeParam.id === 'adhesion' ? 'Máximo' : activeParam.max}</span>
-              </div>
+                `}} />
+              </header>
+
+              <main className="max-w-6xl mx-auto px-4 md:px-8 flex flex-col lg:flex-row gap-8">
+                
+                <aside className="lg:w-1/3 flex flex-col gap-2">
+                  {parameters.map((param) => {
+                    const isSelected = selectedId === param.id;
+                    const Icon = param.icon;
+                    return (
+                      <button
+                        key={param.id}
+                        onClick={() => setSelectedId(param.id)}
+                        className={`flex items-center gap-4 w-full text-left p-4 rounded-xl transition-all duration-200 border-2 
+                          ${isSelected 
+                            ? 'bg-blue-50 border-blue-600 shadow-md transform scale-[1.02]' 
+                            : 'bg-white border-slate-100 hover:border-slate-300 hover:bg-slate-50 text-slate-600'
+                          }`}
+                      >
+                        <div className={`p-2 rounded-lg ${isSelected ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                          <Icon size={24} />
+                        </div>
+                        <span className={`font-semibold text-lg ${isSelected ? 'text-blue-900' : ''}`}>
+                          {param.title}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </aside>
+
+                <section className="lg:w-2/3 bg-white rounded-2xl p-6 md:p-10 border border-slate-200 shadow-sm flex flex-col">
+                  
+                  <div className="flex items-center gap-3 mb-6">
+                     <div className="p-3 bg-blue-100 text-blue-700 rounded-xl">
+                        {React.createElement(activeParam.icon, {size: 32})}
+                     </div>
+                     <h2 className="text-3xl font-bold text-slate-900">{activeParam.title}</h2>
+                  </div>
+
+                  <p className="text-lg text-slate-700 leading-relaxed mb-6">
+                    {activeParam.description}
+                  </p>
+
+                  <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-r-lg mb-10 text-slate-800">
+                    <strong>💡 Consejo Pro:</strong> {activeParam.tip}
+                  </div>
+
+                  <div className="mt-auto bg-slate-50 rounded-xl p-6 border border-slate-200 shadow-sm relative overflow-hidden">
+                    <h3 className="text-sm font-bold tracking-wider text-slate-400 uppercase mb-6 text-center">
+                      Simulador Visual
+                    </h3>
+                    
+                    {activeParam.renderVisual(activeValue)}
+
+                    <div className="mt-8 px-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-slate-500 font-medium text-sm">Ajustar valor:</span>
+                        <span className="text-2xl font-bold text-blue-700 bg-blue-50 px-4 py-1 rounded-lg">
+                          {activeParam.id === 'supports' 
+                            ? (activeValue === 1 ? 'Sí' : 'No') 
+                            : activeParam.id === 'adhesion'
+                              ? (['Skirt', 'Brim', 'Raft'][activeValue])
+                              : `${activeValue} ${activeParam.unit}`
+                          }
+                        </span>
+                      </div>
+                      
+                      <input
+                        type="range"
+                        min={activeParam.min}
+                        max={activeParam.max}
+                        step={activeParam.step}
+                        value={activeValue}
+                        onChange={handleSliderChange}
+                        className="w-full h-3 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                      />
+                      
+                      <div className="flex justify-between mt-2 text-xs text-slate-400 font-medium">
+                        <span>{activeParam.id === 'supports' ? 'Sin Soporte' : activeParam.id === 'adhesion' ? 'Mínimo' : activeParam.min}</span>
+                        <span>{activeParam.id === 'supports' ? 'Con Soporte' : activeParam.id === 'adhesion' ? 'Máximo' : activeParam.max}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                </section>
+
+              </main>
             </div>
-          </div>
+          );
+        }
 
-        </section>
-
-      </main>
-    </div>
-  );
-}
+        // --- Renderizar la aplicación en el navegador ---
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
